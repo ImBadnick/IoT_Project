@@ -17,7 +17,7 @@
 #include "global_variables.h"
 #include "sys/log.h"
 
-//Address of the observing java collector
+//Address of the observing python collector
 #define SERVER "coap://[fd00::1]:5683"
 
 // Log configuration
@@ -30,11 +30,6 @@
 //Interval for connection retries with the border router
 #define CONNECTION_TEST_INTERVAL 2
 
-//Coap Resources for the AC (actuator), LEDS (actuator) and the temperature sensor (sensor)
-extern coap_resource_t res_ac_system;
-extern coap_resource_t res_temperature_sensor;
-extern coap_resource_t res_leds;
-
 //Registration status
 static bool registered = false;
 
@@ -43,11 +38,6 @@ static struct etimer simulation_timer;
 
 //Timer for connection retries with the border router
 static struct etimer connectivity_timer;
-
-//Declare the two protothreads: one for the sensing subsystem,
-//the other for handling leds blinking
-PROCESS(air_conditioning_server, "Air Conditioning Server");
-AUTOSTART_PROCESSES(&air_conditioning_server);
 
 
 // Test the connectivity with the border router
@@ -69,21 +59,33 @@ void client_chunk_handler(coap_message_t *response) {
 		return;
 	}
 
-	registered = true;
 	int len = coap_get_payload(response, &chunk);
+
+	registered = true;
+	
 	LOG_INFO("|%.*s \n", len, (char *)chunk);
 }
+
+//Declare the two protothreads: one for the sensing subsystem,
+//the other for handling leds blinking
+PROCESS(air_conditioning_server, "Air Conditioning Server");
+AUTOSTART_PROCESSES(&air_conditioning_server);
+
+
+//Coap Resources for the AC (actuator), LEDS (actuator) and the temperature sensor (sensor)
+extern coap_resource_t res_ac_system;
+extern coap_resource_t res_temperature_sensor;
+extern coap_resource_t res_leds;
 
 PROCESS_THREAD(air_conditioning_server, ev, data){
 	PROCESS_BEGIN();
 
-	static coap_endpoint_t server;
-    static coap_message_t request[1];
-
 	LOG_INFO("Starting air conditioning CoAP server\n");
-	coap_activate_resource(&res_ac_system, "air_conditioning/res_air_conditioner");
-	coap_activate_resource(&res_temperature_sensor, "air_conditioning/res_temperature_sensor");
-	coap_activate_resource(&res_leds, "air_conditioning/res_leds");
+	coap_activate_resource(&res_ac_system, "res_air_conditioner");
+	coap_activate_resource(&res_temperature_sensor, "res_temperature_sensor");
+	coap_activate_resource(&res_leds, "res_leds");
+
+	
 
 	// try to connect to the border router
 	etimer_set(&connectivity_timer, CLOCK_SECOND * CONNECTION_TEST_INTERVAL);
@@ -93,17 +95,21 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
 		PROCESS_WAIT_UNTIL(etimer_expired(&connectivity_timer));
 	}
 
-	//try to connect to the collector
-	while(!registered) {
-    	LOG_INFO("Sending registration message\n");
-    	coap_endpoint_parse(SERVER, strlen(SERVER), &server);
-    	// Prepare the message
-    	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
-    	coap_set_header_uri_path(request, "registry");
+	static coap_endpoint_t server;
+    static coap_message_t request[1];
 
-    	COAP_BLOCKING_REQUEST(&server, request, client_chunk_handler);
+	LOG_INFO("Sending registration message\n");
+    coap_endpoint_parse(SERVER, strlen(SERVER), &server);
+	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);  
+	coap_set_header_uri_path(request, "registry");
+	COAP_BLOCKING_REQUEST(&server, request, client_chunk_handler);
 
-    }
+	while(!registered){
+    LOG_DBG("Retrying with server\n");
+    COAP_BLOCKING_REQUEST(&server, request, client_chunk_handler);
+  	}
+
+	printf("--Registred--\n");
 
 	//periodic simulation of sensor measurements
 	etimer_set(&simulation_timer, CLOCK_SECOND * SIMULATION_INTERVAL);
@@ -114,7 +120,7 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
 			    //let the actuator resource handle the manual mode
 				manual_handler();
 			}
-
+			LOG_INFO("RES_TEMP_TRIGGER");
 			res_temperature_sensor.trigger();
 			etimer_set(&simulation_timer, CLOCK_SECOND * SIMULATION_INTERVAL);
 		}

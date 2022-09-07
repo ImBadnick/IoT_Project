@@ -17,7 +17,7 @@ static void ac_put_handler(coap_message_t *request, coap_message_t *response, ui
 RESOURCE(res_ac_system,
          "title=\"AC System\";rt=\"Control\"",
          NULL,
-         ac_put_handler,
+		 NULL,
          ac_put_handler,
          NULL);
 
