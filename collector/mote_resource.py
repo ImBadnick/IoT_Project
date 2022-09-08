@@ -49,18 +49,10 @@ class MoteResource:
         
         #Commit the query and show the results 
         self.connection.commit()
-        self.show_log()
 
     # Function called when the resource notifies of a new value 
     def observer(self, response):
-        print("callback called")
-
-        # Check if the payload is empty or there are the data inside 
-        if response.payload is None:
-            print("response is none")
         if response.payload is not None:
-            print("response:")
-            print(response.payload)
             # Get the data from the payload in json format 
             node_data = json.loads(response.payload)
             if not node_data["temperature"]:
@@ -87,16 +79,6 @@ class MoteResource:
             # Execute the query to store the values in the DB
             self.execute_query()
 
-    # Shows the DB's values collected since the application started 
-    def show_log(self):
-        with self.connection.cursor() as cursor:
-            sql = "SELECT * FROM `coap`"
-            cursor.execute(sql)
-            results = cursor.fetchall()
-            header = results[0].keys()
-            rows = [x.values() for x in results]
-            print(tabulate.tabulate(rows, header, tablefmt='grid'))
-
     # Function used to start the observing procedure
     def start_observing(self):
         logging.getLogger("coapthon.server.coap").setLevel(logging.WARNING)
@@ -105,6 +87,25 @@ class MoteResource:
 
         # Instanciate a new coap client 
         self.client = HelperClient(self.address) 
-        print("Start Observing")
         # Start observing 
         self.client.observe(self.resource, self.observer)
+
+    def get_env_temperature(self):
+        return self.temperature
+    
+    def activate_ac(self):
+        response = self.client.put(self.actuator_ac_resource, "ac_status=ON")
+
+    def deactivate_ac(self):
+        response = self.client.put(self.actuator_ac_resource, "ac_status=OFF")
+
+    def get_activated_led(self):
+        if self.temperature == self.ac_temperature:
+            return "The led activated is the GREEN one 'cause the temperature of the env is equal to the temperature of the air conditioner\n"
+        elif self.temperature != self.ac_temperature:
+            return "The led activated is the RED one 'cause the temperature of the env is not equal to the temperature of the air conditioner\n"
+
+    def change_ac_temperature(self,value):
+        response = self.client.put(self.actuator_ac_resource, "ac_temp=" + value)
+
+    

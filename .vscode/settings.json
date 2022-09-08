@@ -2,5 +2,6 @@
     "files.associations": {
         "res_air_conditioner": "c",
         "system_error": "c"
-    }
+    },
+    "C_Cpp.dimInactiveRegions": false
 }

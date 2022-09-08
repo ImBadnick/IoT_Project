@@ -16,9 +16,13 @@ class AdvancedResource(Resource):
     def __init__(self, name="Advanced"):
         super(AdvancedResource, self).__init__(name)
         self.payload = "Advanced resource"
+        self.moteResource = None
 
     def render_GET_advanced(self, request, response):
         response.payload = self.payload
         response.max_age = 20
         response.code = defines.Codes.CONTENT.number
-        moteResource = MoteResource(request.source)
+        self.moteResource = MoteResource(request.source)
+
+    def get_mote_resource(self):
+        return self.moteResource
