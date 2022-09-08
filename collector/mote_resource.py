@@ -35,12 +35,6 @@ class MoteResource:
         self.timestamp = 0
         self.ac_temperature = 0
         self.ac_status = 0
-        
-        # Delete all the records before the new session 
-        with self.connection.cursor() as cursor:
-            cursor.execute("DELETE FROM mqtt")
-            cursor.execute("DELETE FROM coap")
-        self.connection.commit()
 
         # Start observing from the resource 
         self.start_observing()

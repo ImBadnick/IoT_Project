@@ -19,9 +19,9 @@ def test():
     logging.getLogger("coapthon.layers.messagelayer").setLevel(logging.WARNING)
     logging.getLogger("coapthon.client.coap").setLevel(logging.WARNING)
 
-    #client = MQTTClient()
-    #thread = threading.Thread(target=client.mqtt_client, args=(), kwargs={})
-    #thread.start()
+    client = MQTTClient()
+    thread = threading.Thread(target=client.mqtt_client, args=(), kwargs={})
+    thread.start()
     server = CoAPServer(ip, port)
     try:
         server.listen(100)

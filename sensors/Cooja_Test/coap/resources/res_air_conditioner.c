@@ -7,11 +7,10 @@
 #include "sys/log.h"
 
 /* Log configuration */
-#define LOG_MODULE "airconditioner-system"
+#define LOG_MODULE "ac-control"
 #define LOG_LEVEL LOG_LEVEL_APP
 
-static bool change_ac_status(int len, const char* text);
-static bool change_ac_temp(int len, const char* text);
+
 static void ac_put_handler(coap_message_t *request, coap_message_t *response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset);
 
 RESOURCE(res_ac_system,
@@ -21,56 +20,47 @@ RESOURCE(res_ac_system,
          ac_put_handler,
          NULL);
 
-//sets the AC ON/OFF
+
+
+//sets the AC ON/OFF -> default off 
 bool ac_on = false;
 
-//sets the working temperature for the AC
+//sets the default working temperature for the AC
 int ac_temperature = 22;
 
-//tracks if the AC is in manual mode
-bool manual = false;
 
+//change the AC status (ON/OFF) based on a CoAP request from the collector
+static bool change_ac_status(int len, const char* status) {
 
-//change the AC status based on a CoAP request from the collector
-static bool change_ac_status(int len, const char* text) {
-    char status[4];
-    memset(status, 0, 3);
-
-    if(len > 0 && len < 4) {
-    	memcpy(status, text, len);
-		if(strncmp(status, "ON", len) == 0) {
-			ac_on = true;
-			LOG_INFO("AC system ON\n");
-		} else if(strncmp(status, "OFF", len) == 0) {
-			ac_on = false;
-			LOG_INFO("AC System OFF\n");
-		} else {
-			return false;
-		}
-    } else {
-	    return false;
-    }
+    if(strncmp(status, "ON", len) == 0) {
+		ac_on = true;
+		LOG_INFO("AC system ON\n");
+	} 
+	else if(strncmp(status, "OFF", len) == 0) {
+		ac_on = false;
+		LOG_INFO("AC System OFF\n");
+	} 
+	else {
+		return false; // return false = Error
+	}
 
     return true;
 }
 
 //change the AC working temperature based on a CoAP request from the collector
-static bool change_ac_temp(int len, const char* text) {
-    char ac_temp[4];
-    memset(ac_temp, 0, 3);
+static bool change_ac_temp(int len, const char* temp) {
+    int set_temperature = atoi(temp);
 
-    if(len > 0 && len < 4) {
-	    memcpy(ac_temp, text, len);
-	    ac_temperature = atoi(ac_temp);
-
+	if (set_temperature >= 16 && set_temperature<=32){
+	    ac_temperature = set_temperature;
 		LOG_INFO("Changed AC temperature to %d \n", ac_temperature);
-    } else {
-		return false;
-    }
+		return true;
+    } 
+	else{ 
+		return false; 
+	}
 
-    return true;
 }
-
 
 //checks if the CoAP request from the collector wants to set the AC working temperature
 //or change the status of the AC
@@ -78,29 +68,23 @@ static void ac_put_handler(coap_message_t *request, coap_message_t *response, ui
 	size_t len = 0;
 	const char *text = NULL;
 
-    bool response_status = true;
+    bool response_status = false;
 
-	len = coap_get_post_variable(request, "ac_status", &text);
-
-	if (len > 0) {
-		LOG_INFO("ac_status len: %zu \n", len);
-	    response_status = change_ac_status(len, text);
-	} else {
-	    text = NULL;
-	    len = coap_get_post_variable(request, "ac_temp", &text);
-	   	LOG_INFO("ac temp len: %zu \n", len);
-
-	    response_status = change_ac_temp(len, text);
+	if ((len = coap_get_post_variable(request, "ac_status", &text))) { //If the requests is a PUT command with ac_status variable
+		response_status = change_ac_status(len, text);
+	} 
+	else if ((len = coap_get_post_variable(request, "ac_temp", &text))){
+		response_status = change_ac_temp(len, text);
 	}
 
 	if (!response_status) {
-	    coap_set_status_code(response, BAD_REQUEST_4_00);
+		coap_set_status_code(response, BAD_REQUEST_4_00);
 	}
 }
 
-//enter or exit the manual mode and set the status of the AC accordingly
+
+//manual on-off with the sensor button 
 void manual_handler() {
-    manual = !manual;
     ac_on = !ac_on;
 
     if (ac_on) {

@@ -21,7 +21,7 @@
 #define SERVER "coap://[fd00::1]:5683"
 
 // Log configuration
-#define LOG_MODULE "air_conditioning"
+#define LOG_MODULE "ac-system"
 #define LOG_LEVEL LOG_LEVEL_APP
 
 //Simulation interval between sensor measurements
@@ -85,7 +85,6 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
 	coap_activate_resource(&res_temperature_sensor, "res_temperature_sensor");
 	coap_activate_resource(&res_leds, "res_leds");
 
-	
 
 	// try to connect to the border router
 	etimer_set(&connectivity_timer, CLOCK_SECOND * CONNECTION_TEST_INTERVAL);
@@ -99,11 +98,14 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
     static coap_message_t request[1];
 
 	LOG_INFO("Sending registration message\n");
+	//Server address parse into "server" variable
     coap_endpoint_parse(SERVER, strlen(SERVER), &server);
+	//Prepare coap message for the coap server to the "registry" resource exposed by the server and wait for the response 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);  
 	coap_set_header_uri_path(request, "registry");
 	COAP_BLOCKING_REQUEST(&server, request, client_chunk_handler);
 
+	//Sends the coap message while the server doesnt reply and there is a "connection"
 	while(!registered){
     LOG_DBG("Retrying with server\n");
     COAP_BLOCKING_REQUEST(&server, request, client_chunk_handler);
@@ -117,10 +119,10 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
 		PROCESS_WAIT_EVENT();
 		if((ev == PROCESS_EVENT_TIMER && data == &simulation_timer) || ev == button_hal_press_event) {
 			if(ev == button_hal_press_event){
-			    //let the actuator resource handle the manual mode
+			    //let the actuator resource handle the button
 				manual_handler();
 			}
-			LOG_INFO("RES_TEMP_TRIGGER");
+			LOG_INFO("--> ");
 			res_temperature_sensor.trigger();
 			etimer_set(&simulation_timer, CLOCK_SECOND * SIMULATION_INTERVAL);
 		}

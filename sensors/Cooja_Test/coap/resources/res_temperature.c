@@ -10,7 +10,7 @@
 
 #include "sys/log.h"
 
-#define LOG_MODULE "temperature-sensor"
+#define LOG_MODULE "ac-temperature-sensor"
 #define LOG_LEVEL LOG_LEVEL_APP
 
 //API FUNCTION DEFINITIONS
@@ -27,59 +27,48 @@ EVENT_RESOURCE(res_temperature_sensor,
 	NULL,
 	temperature_event_handler);
 
-static int default_temperature = 30;
-static int temperature = 30;
+static int default_temperature = 30; //Default enviroment temperature
+static int temperature = 30; //Starting temperature 
 
-
+// Function used to simulate the env temperature with ac ON/OFF 
 static void simulate_temperature_values () {
     int variation = 0;
-
+	
+	// If the AC is on  -> the temperature decrease/increase while it's not equal to ac_temperature 
+	// If the AC is off -> the temperature decrease/increase while it's not equal to the env default temperature (default_temperature)
 	if(ac_on) { 
 	    if (temperature > ac_temperature) { variation = 1; }
 		else if (temperature < ac_temperature) { variation = -1; }  
 
 	    temperature = temperature - variation;
 
-	} else {
-
+	} 
+	else {
 		if (temperature < default_temperature) { variation = 1; }
 		else if (temperature > default_temperature) { variation = -1; }
 
 		temperature = temperature + variation;
     }
-
 }
 
 
-//API FUNCTIONS IMPLEMENTATIONS
+// Simulates the temperature value and notifies the observers of the new temperature in the enviroment
 static void temperature_event_handler(void) {
 	simulate_temperature_values();
 	LOG_INFO("temperature : %d ----------- ac_temperature: %d \n", temperature, ac_temperature);
     coap_notify_observers(&res_temperature_sensor);
 }
 
-
+// Function called when there is a GET request or used by the sensor for the notify function 
 static void temperature_get_handler(coap_message_t *request, coap_message_t *response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset){
+
+	//Prepare the msg to send 
+	snprintf((char *)buffer, COAP_MAX_CHUNK_SIZE, "{\"node\": %d, \"temperature\": %d, \"timestamp\": %lu, \"ac_temperature\": %d, \"ac_status\": %d}", node_id, temperature, clock_seconds(), ac_temperature, (int) ac_on);
 	
-	unsigned int accept = -1; 
-	coap_get_header_accept(request, &accept);
+	//Set the header and the payload of the msg
+	coap_set_header_content_format(response, APPLICATION_JSON);
+	coap_set_payload(response, buffer, strlen((char *)buffer));
 
-	if (accept == -1) {
-    	coap_set_header_content_format(response, APPLICATION_JSON);
-		snprintf((char *)buffer, COAP_MAX_CHUNK_SIZE, "{\"node\": %d, \"temperature\": %d, \"timestamp\": %lu, \"ac_temperature\": %d, \"ac_status\": %d}", node_id, temperature, clock_seconds(), ac_temperature, (int) ac_on);
-		coap_set_payload(response, (uint8_t *)buffer, strlen((char *)buffer));
-	}
-
-	else if (accept == APPLICATION_JSON){
-		coap_set_header_content_format(response, APPLICATION_JSON);
-		snprintf((char *)buffer, COAP_MAX_CHUNK_SIZE, "{\"node\": %d, \"temperature\": %d, \"timestamp\": %lu, \"ac_temperature\": %d, \"ac_status\": %d}", node_id, temperature, clock_seconds(), ac_temperature, (int) ac_on);
-		coap_set_payload(response, buffer, strlen((char *)buffer));
-	}
-	else {
-		coap_set_status_code(response, NOT_ACCEPTABLE_4_06);
-		const char *msg = "Supporting content-type application/json";
-   		 coap_set_payload(response, msg, strlen(msg));
-	}
 }
 
 

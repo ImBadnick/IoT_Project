@@ -18,14 +18,7 @@ class AdvancedResource(Resource):
         self.payload = "Advanced resource"
 
     def render_GET_advanced(self, request, response):
-        if request.payload is None:
-            print("empty payload")
-            mr = MoteResource(request.source)
-            return self, None
-        else:
-             moteInfo = json.loads(request.payload)
-             response.payload = self.payload
-             response.max_age = 20
-             response.code = defines.Codes.CONTENT.number
-             moteResource = MoteResource(request.source)
-             return self, response
+        response.payload = self.payload
+        response.max_age = 20
+        response.code = defines.Codes.CONTENT.number
+        moteResource = MoteResource(request.source)

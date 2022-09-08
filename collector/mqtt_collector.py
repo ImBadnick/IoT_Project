@@ -38,6 +38,14 @@ class MQTTClient:
     def mqtt_client(self):
         self.db = Database()
         self.connection = self.db.connect_db()
+
+        # Delete all the records before the new session 
+        with self.connection.cursor() as cursor:
+            cursor.execute("DELETE FROM mqtt")
+            cursor.execute("DELETE FROM coap")
+            cursor.execute("ALTER TABLE coap AUTO_INCREMENT = 1")
+        self.connection.commit()
+
         print("Mqtt client starting")
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect

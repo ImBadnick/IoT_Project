@@ -338,7 +338,9 @@ PROCESS_THREAD(alarm_control, ev, data){
     while(1){
         PROCESS_YIELD();
         if (ev == PROCESS_EVENT_TIMER){
-            printf("SOUND ALERT SIMULATION!\n");
+            if (energy_consumption>=3000){
+                printf("SOUND ALERT SIMULATION!\n");
+            }
         }
         etimer_restart(&alarm_timer);
 
