@@ -1,4 +1,3 @@
-
 #ifndef PROJECT_CONF_H_
 #define PROJECT_CONF_H_
 
@@ -10,8 +9,7 @@
 
 #define LOG_LEVEL_APP LOG_LEVEL_DBG
 
-#define IEEE802154_CONF_PANID                0x0035
+#define IEEE802154_CONF_PANID            0xABCD
 #define IEEE802154_CONF_DEFAULT_CHANNEL      25
 
 #endif /* PROJECT_CONF_H_ */
-

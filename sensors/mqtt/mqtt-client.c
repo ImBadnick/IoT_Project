@@ -17,12 +17,9 @@
 #include <strings.h>
 /*---------------------------------------------------------------------------*/
 #define LOG_MODULE "energy-control"
-#ifdef MQTT_CLIENT_CONF_LOG_LEVEL
-#else
-#define LOG_LEVEL LOG_LEVEL_DBG
-#endif
-
+#define LOG_LEVEL LOG_LEVEL_APP
 /*---------------------------------------------------------------------------*/
+
 /* MQTT broker address. */
 #define MQTT_CLIENT_BROKER_IP_ADDR "fd00::1"
 
@@ -32,10 +29,6 @@ static const char *broker_ip = MQTT_CLIENT_BROKER_IP_ADDR;
 #define DEFAULT_BROKER_PORT         1883
 #define DEFAULT_PUBLISH_INTERVAL    (30 * CLOCK_SECOND)
 #define PUBLISH_INTERVAL	          (5 * CLOCK_SECOND)
-
-
-// We assume that the broker does not require authentication
-
 
 /*---------------------------------------------------------------------------*/
 /* Various states */
@@ -87,28 +80,60 @@ static struct mqtt_connection conn;
 /*---------------------------------------------------------------------------*/
 PROCESS(energy_control_process, "Energy Control process");
 
-static int energy_consumption = 500;
-static int energy_variation = 0;
-static int add_or_sub = 0;
+static int energy_consumption = 500; //Starting energy consumption assumption 
+static int energy_variation = 0; //Used to randomize the energy variation 
 
-static bool sound_alarm_on = false;
+static bool sound_alarm_on = false; //Simulates an alarm when the energy is > 3kW (Italian assumption on max energy home consumption)
+
 
 /*---------------------------------------------------------------------------*/
-static void pub_handler(const char *topic, uint16_t topic_len, const uint8_t *chunk, uint16_t chunk_len) {
-  printf("Pub Handler: topic='%s' (len=%u), chunk_len=%u\n", topic, topic_len, chunk_len);
-  if(strcmp((const char *)topic, "led")==0){
-      printf("Received Actuator command\n");
-      if(strcmp((const char *)chunk, "low")==0){
-          leds_on(LEDS_GREEN);
-          printf("Energy consumed is low (<3000kW)\n");
-      }else if (strcmp((const char *)chunk, "high")==0){
-          leds_on(LEDS_RED);
-          printf("Energy consumed is high (>3000kW)\n");
-      }else{
-          printf("UNKNOWN\n");
-      }
-      return;
+
+
+// When button is pressed, activates/deactivates the process that manage the sound alert simulation 
+static void alarm_handler(){
+    sound_alarm_on = !sound_alarm_on;
+    
+    if(sound_alarm_on){
+      LOG_INFO("SOUND ALERT ACTIVATED\n");
+      process_start(&alarm_control, NULL);
     }
+    else{
+      LOG_INFO("SOUND ALERT DEACTIVATED\n");
+      process_exit(&alarm_control);
+    }
+}
+
+
+int color = 2; // 0 = RED, 1 = GREEN, 2 = NO LED
+
+//Function used to handle the commands given by the server (actuator commands) 
+static void pub_handler(const char *topic, uint16_t topic_len, const uint8_t *chunk, uint16_t chunk_len) {
+    
+    // LED ACTUATOR MANAGER 
+    if(strcmp((const char *)topic, "led")==0){
+        // If has been published from the server on the topic the word "low" -> activate the green led
+        if(strcmp((const char *)chunk, "low")==0){
+            if(color != 1) {
+                leds_on(LEDS_GREEN);
+                LOG_INFO("Energy consumed is low (<3000kW) --> GREEN LED ACTIVATED \n");
+                color = 1;
+            }
+        }
+        // If has been published from the server on the topic the word "high" -> set the led to red 
+        else if (strcmp((const char *)chunk, "high")==0){
+            if(color != 0) {
+                leds_on(LEDS_RED);
+                LOG_INFO("Energy consumed is high (>=3000kW) --> RED LED ACTIVATED \n");
+                color = 0;
+            }
+        }
+        else{
+            LOG_INFO("UNKNOWN\n");
+        }
+
+        return;
+    }
+
 }
 
 
@@ -124,7 +149,7 @@ static void mqtt_event(struct mqtt_connection *m, mqtt_event_t event, void *data
     case MQTT_EVENT_DISCONNECTED: {
         state = STATE_DISCONNECTED;
         process_poll(&energy_control_process);
-        printf("MQTT Disconnect. Reason %u\n", *((mqtt_event_t *)data));
+        LOG_ERR("MQTT Disconnect. Reason %u\n", *((mqtt_event_t *)data));
         break;
     }
     case MQTT_EVENT_PUBLISH: {
@@ -160,6 +185,7 @@ static void mqtt_event(struct mqtt_connection *m, mqtt_event_t event, void *data
     }
   }
 
+// Tests the connectivity 
 static bool have_connectivity(void) {
     if(uip_ds6_get_global(ADDR_PREFERRED) == NULL ||  uip_ds6_defrt_choose() == NULL) {
         return false;
@@ -167,40 +193,71 @@ static bool have_connectivity(void) {
     return true;
 }
 
-static void alarm_handler(){
-    sound_alarm_on = !sound_alarm_on;
-    
-    if(sound_alarm_on){
-      process_start(&alarm_control, NULL);
-    }
-    else{
-      process_exit(&alarm_control)
-    }
-}
 
+// Function used to get a random value in range [a,b)
 int random_in_range(int a, int b) {
     int v = random_rand() % (b-a);
     return v + a;
 }
 
 
+static int add_or_sub = 0;  //Variable used to get a number in range [0,4] used to simulate a 1/5 probability 
+static int energy_wave = 0; //Variable used to know if the energy is increasing or decreasing in that moment 
+
+/* ---------------------------------------- ENERGY SIMULATION ---------------------------------------- */
+/*
+
+The energy simulation starts from a default value = 500W and the variable energy_wave = 0 which means that 
+the energy consumption will increase of random value between [0,500). When the energy_consumption is above
+3000W, it has the probability of 1/5 to start decreasing changing the energy_wave variable to 1. If that
+happens, the energy_consumption will start decreasing, of a random value between [0,500) while it will be 
+below 500W. Otherwise the energy_consumption will assume random values between [3000,3500) watt.
+The energy_consumption, after decreasing below the 500W, has the probability of 1/5 to start increasing changing
+the energy_wave variable to 0 and starting the same cicle again from the start. 
+
+OBSERVATIONS:
+1) When the energy gets above 3000W -> red led gets activated
+2) When the energy gets below 3000W -> green led gets activated                                        */
+
+                                                                                                        
 static void simulate_energy_consumption(){
-    add_or_sub = random_in_range(0,2)
 
-    if (add_or_sub == 0) {
-      //add energy consumption 
-      energy_variation = random_in_range(0,500);
-      if (energy_consumption + energy_variation < 3500) {
-        energy_consumption += energy_variation;
-      }
+    if (energy_wave == 0) {
+        if (energy_consumption >= 3000){
+            add_or_sub = random_in_range(0,5);
+            if (add_or_sub != 2){
+                energy_consumption = random_in_range(3000, 3500);
+            }
+            else {
+                energy_wave = 1;
+                energy_variation = random_in_range(0,500);
+                energy_consumption -= energy_variation;
+            }
+        }
+        else{
+            energy_variation = random_in_range(0,500);
+            energy_consumption += energy_variation;
+        }
     }
-    else {
-      //sub energy consumption 
-      energy_variation = random_in_range(0,energy_consumption-50);
-      energy_consumption -= energy_variation;
+    else{
+        if (energy_consumption < 500){
+            add_or_sub = random_in_range(0,5);
+            if (add_or_sub != 2){
+                energy_consumption = random_in_range(200, 500);
+            }
+            else {
+                energy_wave = 0;
+                energy_variation = random_in_range(0,500);
+                energy_consumption += energy_variation;
+            }
+        }
+        else{
+            energy_variation = random_in_range(0,500);
+            energy_consumption -= energy_variation;
+        }
     }
 
-	  LOG_INFO("New energy consumption value: %d\n", energy_consumption);
+	LOG_INFO("New energy consumption value: %d\n", energy_consumption);
 }
 
 
@@ -210,10 +267,8 @@ PROCESS_THREAD(energy_control_process, ev, data)
 
     PROCESS_BEGIN();
     
-    mqtt_status_t status;
-    char broker_address[CONFIG_IP_ADDR_STR_LEN];
-
-    printf("Energy Controller Process\n");
+    mqtt_status_t status; //Status of the MQTT client 
+    char broker_address[CONFIG_IP_ADDR_STR_LEN]; //Address of the broker 
 
     // Initialize the ClientID as MAC address
     snprintf(client_id, BUFFER_SIZE, "%02x%02x%02x%02x%02x%02x",
@@ -235,67 +290,71 @@ PROCESS_THREAD(energy_control_process, ev, data)
         PROCESS_YIELD();
 
         if((ev == PROCESS_EVENT_TIMER && data == &periodic_timer) || ev == PROCESS_EVENT_POLL || ev == button_hal_press_event){
-                    
+            
+            // Tests the connectivity 
             if(state==STATE_INIT){
-              if(have_connectivity()==true)  
-                  state = STATE_NET_OK;
+                if(have_connectivity()==true)  
+                    state = STATE_NET_OK;
             } 
-          
-          if(state == STATE_NET_OK){
+            
+            // Connects to the MQTT server 
+            if(state == STATE_NET_OK){
 
-              memcpy(broker_address, broker_ip, strlen(broker_ip));
-              
-              mqtt_connect(&conn, broker_address, DEFAULT_BROKER_PORT, (DEFAULT_PUBLISH_INTERVAL * 3) / CLOCK_SECOND, MQTT_CLEAN_SESSION_ON);
+                memcpy(broker_address, broker_ip, strlen(broker_ip));
+                
+                mqtt_connect(&conn, broker_address, DEFAULT_BROKER_PORT, (DEFAULT_PUBLISH_INTERVAL * 3) / CLOCK_SECOND, MQTT_CLEAN_SESSION_ON);
 
-              state = STATE_CONNECTING;
+                state = STATE_CONNECTING;
 
-              LOG_INFO("Connected to MQTT server \n")
-          }
-          
-          if(state==STATE_CONNECTED){
-              // Subscribe to a topic
-              strcpy(sub_topic,"led");
-
-              status = mqtt_subscribe(&conn, NULL, sub_topic, MQTT_QOS_LEVEL_0);
-
-              printf("Subscribing!\n");
-
-              if(status == MQTT_STATUS_OUT_QUEUE_FULL) {
-                  LOG_ERR("Tried to subscribe but command queue was full!\n");
-                  PROCESS_EXIT();
-              }
-              
-              state = STATE_SUBSCRIBED;
-          }
-
-        if(state == STATE_SUBSCRIBED){
-            // Publish something
-            sprintf(pub_topic, "%s", "energy-consumption");
-
-            if(ev == button_hal_press_event){
-					      button_hal_button_t* btn = (button_hal_button_t*)data;
-                if (btn->unique_id == BOARD_BUTTON_HAL_INDEX_KEY_LEFT) {
-                    alarm_handler();
-                }
+                LOG_INFO("Connected to MQTT server \n");
             }
 
-            simulate_energy_consumption()
+            // Subscribes to the led topic to get "actuator" functions from the server 
+            if(state==STATE_CONNECTED){
+                // Subscribe to a topic
+                strcpy(sub_topic,"led");
+
+                status = mqtt_subscribe(&conn, NULL, sub_topic, MQTT_QOS_LEVEL_0);
+                
+                LOG_INFO("Subscribing to LED topic!\n");
+
+                if(status == MQTT_STATUS_OUT_QUEUE_FULL) {
+                    LOG_ERR("Tried to subscribe but command queue was full!\n");
+                    PROCESS_EXIT();
+                }
+                
+                state = STATE_SUBSCRIBED;
+            }
+
+            if(state == STATE_SUBSCRIBED){
+                // Gets the topic called "energy-consumption"
+                sprintf(pub_topic, "%s", "energy-consumption");
+
+                // If the button of the sensor has been pressed -> activate/deactivate alarm
+                if(ev == button_hal_press_event){
+                        alarm_handler();
+                }
+
+                // Simulates energy values 
+                simulate_energy_consumption();
+                
+                // Prepares the message to be published on the topic 
+                snprintf(app_buffer, APP_BUFFER_SIZE, "{\"node\": %d, \"energy_consumption\": %d, \"timestamp\": %lu, \"sound_alarm_on\": %d}", 
+                        node_id, energy_consumption, clock_seconds(), (int) sound_alarm_on);
+
+                //Pubishes the message
+                mqtt_publish(&conn, NULL, pub_topic, (uint8_t *)app_buffer, strlen(app_buffer), MQTT_QOS_LEVEL_0, MQTT_RETAIN_OFF);
             
-            sprintf(app_buffer, APP_BUFFER_SIZE, "{\"node\": %d, \"energy_consumption\": %d, \"timestamp\": %lu , \"manual\": %d}", 
-                    node_id, energy_consumption, clock_seconds(), (int) manual_on_off);
-                    
-            LOG_INFO("message: %s\n", app_buffer);
-
-            mqtt_publish(&conn, NULL, pub_topic, (uint8_t *)app_buffer, strlen(app_buffer), MQTT_QOS_LEVEL_0, MQTT_RETAIN_OFF);
-          
-        } else if ( state == STATE_DISCONNECTED ){
-            LOG_ERR("Disconnected form MQTT broker\n");	
-            state = STATE_INIT;
-        }
+            } 
+            
+            // If state is "disconnected" -> tries to reconnect with the broker
+            if ( state == STATE_DISCONNECTED ){
+                LOG_ERR("Disconnected form MQTT broker\n");	
+                state = STATE_INIT;
+            }
         
-        etimer_set(&periodic_timer, PUBLISH_INTERVAL);
-      }
-
+            etimer_set(&periodic_timer, PUBLISH_INTERVAL);
+        }
     }
 
     PROCESS_END();
@@ -308,16 +367,22 @@ PROCESS(alarm_control, "Alarm Control process");
 static struct etimer alarm_timer;
 
 PROCESS_THREAD(alarm_control, ev, data){
-
-  etimer_set(&alarm_timer, 5*CLOCK_SECOND);
-
-  while(1){
-      PROCESS_YIELD();
-      if (ev == PROCESS_EVENT_TIMER){
-          printf("SOUND ALERT SIMULATION!")
-      }
-  }
   
-  PROCESS_END();
+    PROCESS_BEGIN();
+
+    etimer_set(&alarm_timer, 5*CLOCK_SECOND);
+
+    while(1){
+        PROCESS_YIELD();
+        if (ev == PROCESS_EVENT_TIMER){
+            if (energy_consumption>=3000){
+                LOG_INFO("SOUND ALERT SIMULATION!\n");
+            }
+        }
+        etimer_restart(&alarm_timer);
+
+    }
+    
+    PROCESS_END();
 }
         

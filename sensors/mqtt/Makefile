@@ -1,8 +1,7 @@
 CONTIKI_PROJECT = energy-control
 all: $(CONTIKI_PROJECT)
-PLATFORMS_ONLY = cc26x0-cc13x0
 
-CONTIKI = ../..
+CONTIKI = ../../../..
 
 include $(CONTIKI)/Makefile.dir-variables
 MODULES += $(CONTIKI_NG_APP_LAYER_DIR)/mqtt
