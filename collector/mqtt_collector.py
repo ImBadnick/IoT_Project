@@ -5,9 +5,11 @@ import tabulate
 from datetime import date
 
 
-class MQTTClient:
+class MQTT_collector:
 
     def __init__(self):
+        
+        self.flag_connected = 0 # Used to check if the mqtt client is connected 
 
         # Values extracted from the mqtt msgs 
         self.node_id = 0
@@ -33,14 +35,18 @@ class MQTTClient:
 
         # When connected call the "on_connect" function which subscribes to the "energy-consumption" topic
         self.client.on_connect = self.on_connect
+        # When disconnected the client sets the relative flag to 0
+        self.client.on_disconnect = self.on_disconnect
         # When recives a message calls the "on_message" function
         self.client.on_message = self.on_message
 
-        # Tries to connect 
+        # Tries to connect to the broker
         try:
             self.client.connect("127.0.0.1", 1883, 60)
         except Exception as e:
             print(str(e))
+            self.flag_connected = 0
+
 
         # Starts the loop 
         self.client.loop_start()
@@ -50,6 +56,10 @@ class MQTTClient:
     def on_connect(self, client, userdata, flags, rc):
         #print("connected with code: " + str(rc))
         self.client.subscribe("energy-consumption")
+        self.flag_connected = 1
+
+    def on_disconnect(client, userdata, rc):
+        self.flag_connected = 0
 
 
     # Function called by the mqtt client when it recevies a new message
@@ -85,6 +95,8 @@ class MQTTClient:
     def stop_loop(self):
         self.client.loop_stop()
 
+
+
     def get_energy_consumption(self):
         return self.energy_consumption
 
@@ -94,3 +106,5 @@ class MQTTClient:
         else:
             return "The led activated is the red one 'cause the energy_consumption is greater then 3000 Watt\n"
 
+    def check_connection(self):
+        return self.flag_connected

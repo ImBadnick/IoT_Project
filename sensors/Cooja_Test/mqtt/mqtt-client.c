@@ -149,7 +149,7 @@ static void mqtt_event(struct mqtt_connection *m, mqtt_event_t event, void *data
     case MQTT_EVENT_DISCONNECTED: {
         state = STATE_DISCONNECTED;
         process_poll(&energy_control_process);
-        printf("MQTT Disconnect. Reason %u\n", *((mqtt_event_t *)data));
+        LOG_ERR("MQTT Disconnect. Reason %u\n", *((mqtt_event_t *)data));
         break;
     }
     case MQTT_EVENT_PUBLISH: {
@@ -270,8 +270,6 @@ PROCESS_THREAD(energy_control_process, ev, data)
     mqtt_status_t status; //Status of the MQTT client 
     char broker_address[CONFIG_IP_ADDR_STR_LEN]; //Address of the broker 
 
-    printf("Energy Controller Process\n");
-
     // Initialize the ClientID as MAC address
     snprintf(client_id, BUFFER_SIZE, "%02x%02x%02x%02x%02x%02x",
                       linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
@@ -318,7 +316,7 @@ PROCESS_THREAD(energy_control_process, ev, data)
 
                 status = mqtt_subscribe(&conn, NULL, sub_topic, MQTT_QOS_LEVEL_0);
                 
-                printf("Subscribing to LED topic!\n");
+                LOG_INFO("Subscribing to LED topic!\n");
 
                 if(status == MQTT_STATUS_OUT_QUEUE_FULL) {
                     LOG_ERR("Tried to subscribe but command queue was full!\n");
@@ -343,8 +341,6 @@ PROCESS_THREAD(energy_control_process, ev, data)
                 // Prepares the message to be published on the topic 
                 snprintf(app_buffer, APP_BUFFER_SIZE, "{\"node\": %d, \"energy_consumption\": %d, \"timestamp\": %lu, \"sound_alarm_on\": %d}", 
                         node_id, energy_consumption, clock_seconds(), (int) sound_alarm_on);
-                        
-                LOG_INFO("message: %s\n", app_buffer);
 
                 //Pubishes the message
                 mqtt_publish(&conn, NULL, pub_topic, (uint8_t *)app_buffer, strlen(app_buffer), MQTT_QOS_LEVEL_0, MQTT_RETAIN_OFF);
@@ -380,7 +376,7 @@ PROCESS_THREAD(alarm_control, ev, data){
         PROCESS_YIELD();
         if (ev == PROCESS_EVENT_TIMER){
             if (energy_consumption>=3000){
-                printf("SOUND ALERT SIMULATION!\n");
+                LOG_INFO("SOUND ALERT SIMULATION!\n");
             }
         }
         etimer_restart(&alarm_timer);

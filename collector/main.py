@@ -1,76 +1,49 @@
-from server import *
-from coapthon.server.coap import CoAP
+from coap_collector import *
+from mqtt_collector import *
+
 import threading
-from mqtt_collector import MQTTClient
-import logging
-import time
 import os
-import keyboard
 
 # Unspecified IPv6 address
 ip = "::"
 port = 5683
 
 
-class CoAPServer(CoAP):
-    def __init__(self, host, port):
-        CoAP.__init__(self, (host, port), False)
-        self.adv_resource = AdvancedResource()
-        self.add_resource("registry", self.adv_resource)
+def application_logic():
 
-    def get_env_temperature(self):
-        mote_resource = self.adv_resource.get_mote_resource()
-        if(mote_resource != None):
-            return mote_resource.get_env_temperature()
-        else:
-            return 0
-
-    def activate_ac(self):
-        mote_resource = self.adv_resource.get_mote_resource()
-        if(mote_resource != None):
-            mote_resource.activate_ac()
-            return "Operation done"
-        else:
-            return "Error in activate ac operation"
-
-    def deactivate_ac(self):
-        mote_resource = self.adv_resource.get_mote_resource()
-        if(mote_resource != None):
-            mote_resource.deactivate_ac()
-            return "Operation done"
-        else:
-            return "Error in deactivate ac operation"
-
-    def get_activated_led(self):
-        mote_resource = self.adv_resource.get_mote_resource()
-        if(mote_resource != None):
-            return (mote_resource.get_activated_led())
-        else:
-            return "Error in retriving the current activated led "
-
-    def change_ac_temperature(self, value):
-        mote_resource = self.adv_resource.get_mote_resource()
-        if(mote_resource != None):
-            mote_resource.change_ac_temperature(value)
-            return "Operation done"
-        else:
-            return "Error in temperature change operation"
-
-
-def test():
-    logging.getLogger("coapthon.server.coap").setLevel(logging.WARNING)
-    logging.getLogger("coapthon.layers.messagelayer").setLevel(logging.WARNING)
-    logging.getLogger("coapthon.client.coap").setLevel(logging.WARNING)
-
-    mqtt_client = MQTTClient()
-    mqtt_thread = threading.Thread(target=mqtt_client.mqtt_client, args=(), kwargs={})
+    mqtt_instance = MQTT_collector()
+    mqtt_thread = threading.Thread(target=mqtt_instance.mqtt_client, args=(), kwargs={})
     mqtt_thread.deamon = True
     mqtt_thread.start()
 
-    coap_server = CoAPServer(ip, port)
-    coap_thread = threading.Thread(target=coap_server.listen, args=([100]), kwargs={})
+    coap_instance = CoAP_collector(ip, port)
+    coap_thread = threading.Thread(target=coap_instance.listen, args=([100]), kwargs={})
     coap_thread.deamon = True
     coap_thread.start()
+
+    check_mqtt_connection = False
+    check_coap_connection = False
+
+    print("Waiting for MQTT and COAP connection!\n")
+
+
+    try:
+        while(not(check_mqtt_connection) or not(check_coap_connection)):
+            if (mqtt_instance.check_connection() == 1 and not(check_mqtt_connection)):
+                check_mqtt_connection = True
+                print("MQTT connection estabilished")
+            
+            if (coap_instance.check_connection() == 1 and not(check_coap_connection)):
+                check_coap_connection = True
+                print("COAP connection estabilished")
+    except KeyboardInterrupt:
+        mqtt_instance.stop_loop()
+        coap_instance.close()
+        print("\n\nSHUTDOWN")
+        os._exit(0)
+
+
+
     
 
     while(1):
@@ -97,26 +70,46 @@ def test():
             text = int(input("Insert your choice: "))
             print("")
             if(text == 1): 
-                print("The energy_consumption in this moment is: " + str(mqtt_client.get_energy_consumption()) + " Watt\n")
+                print("The energy_consumption in this moment is: " + str(mqtt_instance.get_energy_consumption()) + " Watt\n")
             elif(text == 2):
-                print(mqtt_client.get_activated_led())
-            elif(text == 3):     
-                print("")
-            elif(text == 4):
-                print("")
+                print(mqtt_instance.get_activated_led())
             elif(text == 5):
-                print("The temperature in this moment is: " + str(coap_server.get_env_temperature()) + "°C\n")
+                print("The temperature in this moment is: " + str(coap_instance.get_env_temperature()) + "°C\n")
             elif(text == 6):
-                print(coap_server.activate_ac())
+                if (coap_instance.activate_ac()):
+                    print("Operation done! \n")
+                else:
+                    print("\nCoAP connection has been lost, restarting the application\n")
+                    print("-------------------------------------------------------------\n")
+                    return 100
             elif(text == 7):
-                print(coap_server.deactivate_ac())
+                if(coap_instance.deactivate_ac()):
+                    print("Operation done! \n")
+                else:
+                    print("\nCoAP connection has been lost, restarting the application\n")
+                    print("-------------------------------------------------------------\n")
+                    return 100
             elif(text == 8):
-                print(coap_server.get_activated_led())
+                print(coap_instance.get_activated_led())
             elif(text == 9):
-                value = input("Insert ac value: ")
-                print(coap_server.change_ac_temperature(value))
+                value = input("Insert ac value [>= 16 and <= 32]: ")
+                if(value.isdigit()):
+                    if (int(value)>=16 and int(value)<=32):
+                        if(coap_instance.change_ac_temperature(value)):
+                            print("Operation done! \n")
+                        else:
+                            print("\nCoAP connection has been lost, restarting the application\n")
+                            print("-------------------------------------------------------------\n")
+                            return 100
+                    else:
+                        print("Operation cannot be done, the inserted value is not in the correct interval!")
+                else:
+                    print("Operation cannot be done, the inserted value is not a number!")
             elif(text == 0):
                 break
+
+            else:
+                continue
 
             # ASK IF THE USER WANTS TO CONTINUE OR STOP 
             text_2 = ""
@@ -133,6 +126,9 @@ def test():
 
         except KeyboardInterrupt:
             break
+        except ValueError:
+            print("")
+            continue
 
     print("\n")
 
@@ -145,8 +141,8 @@ def test():
         except KeyboardInterrupt:
             break
         
-    mqtt_client.stop_loop()
-    coap_server.close()
+    mqtt_instance.stop_loop()
+    coap_instance.close()
     
     print("\n\nSHUTDOWN")
 
@@ -154,4 +150,6 @@ def test():
 
 
 if __name__ == '__main__':
-    test()
+    app_status = 100
+    while(app_status == 100):
+        app_status = application_logic()

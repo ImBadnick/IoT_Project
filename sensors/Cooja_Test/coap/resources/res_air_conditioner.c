@@ -33,12 +33,16 @@ int ac_temperature = 22;
 static bool change_ac_status(int len, const char* status) {
 
     if(strncmp(status, "ON", len) == 0) {
-		ac_on = true;
-		LOG_INFO("AC system ON\n");
+		if (!ac_on){
+			ac_on = true;
+			LOG_INFO("AC system ON\n");
+		} 
 	} 
 	else if(strncmp(status, "OFF", len) == 0) {
-		ac_on = false;
-		LOG_INFO("AC System OFF\n");
+		if (ac_on){
+			ac_on = false;
+			LOG_INFO("AC System OFF\n");
+		} 
 	} 
 	else {
 		return false; // return false = Error
