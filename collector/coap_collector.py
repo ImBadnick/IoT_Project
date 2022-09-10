@@ -8,6 +8,7 @@ from coapthon import defines
 from database import Database
 
 import json
+from json import JSONDecodeError
 import os
 
 # -------------------------------------------- COAP COLLECTOR CLASS -------------------------------------------- #
@@ -102,7 +103,6 @@ class MoteResource:
         self.temperature = 0
         self.timestamp = 0
         self.ac_temperature = 0
-        self.ac_status = 0
 
         # Start observing from the resource 
         self.start_observing()
@@ -112,29 +112,26 @@ class MoteResource:
     def execute_query(self):
         # Create a new record
         with self.connection.cursor() as cursor:
-            sql = "INSERT INTO `coap` (`node_id`, `temperature`, `timestamp`, `ac_temperature`, `ac_status`) VALUES (%s, %s, %s, %s, %s)"
-            cursor.execute(sql, (self.node_id, self.temperature, self.timestamp, self.ac_temperature, self.ac_status))
+            sql = "INSERT INTO `coap` (`node_id`, `temperature`, `timestamp`, `ac_temperature`) VALUES (%s, %s, %s, %s)"
+            cursor.execute(sql, (self.node_id, self.temperature, self.timestamp, self.ac_temperature))
         
         #Commit the query and show the results 
         self.connection.commit()
 
     # Function called when the resource notifies of a new value 
-    def observer(self, response):
+    def observer(self, response):    
         if response.payload is not None:
             # Get the data from the payload in json format 
             node_data = json.loads(response.payload)
-            if not node_data["temperature"]:
+            if not node_data["temp"]:
                 print("empty")
                 return
             
             # Extract the data from the json file 
             self.node_id = int(node_data["node"])
-            self.temperature = int(node_data["temperature"])
-            self.timestamp = int(node_data["timestamp"])
-            self.ac_temperature = int(node_data["ac_temperature"])
-            if int(node_data["ac_status"]): 
-                self.ac_status = "ON"
-            else: self.ac_status = "OFF"
+            self.temperature = int(node_data["temp"])
+            self.timestamp = int(node_data["time"])
+            self.ac_temperature = int(node_data["ac_temp"])
 
             # Check if the temperature is equal to the air conditioner temperature to actuate on sensor's leds 
             if self.temperature == self.ac_temperature:
@@ -146,6 +143,8 @@ class MoteResource:
 
             # Execute the query to store the values in the DB
             self.execute_query()
+        
+
 
     # Function used to start the observing procedure (the "client" functionality of the COAP server)
     def start_observing(self):
