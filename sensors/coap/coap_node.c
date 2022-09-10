@@ -119,8 +119,11 @@ PROCESS_THREAD(air_conditioning_server, ev, data){
 		PROCESS_WAIT_EVENT();
 		if((ev == PROCESS_EVENT_TIMER && data == &simulation_timer) || ev == button_hal_press_event) {
 			if(ev == button_hal_press_event){
-			    //let the actuator resource handle the button
-				manual_handler();
+				button_hal_button_t* btn = (button_hal_button_t*)data;
+				if (btn->unique_id == BOARD_BUTTON_HAL_INDEX_KEY_LEFT) {
+					//let the actuator resource handle the button
+					manual_handler();
+				}
 			}
 			LOG_INFO("--> ");
 			res_temperature_sensor.trigger();

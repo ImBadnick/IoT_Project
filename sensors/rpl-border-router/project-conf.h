@@ -43,4 +43,6 @@
 #define UIP_CONF_TCP 1
 #endif
 
+#define CCXXWARE_CONF_ROM_BOOTLOADER_ENABLE 1
+
 #endif /* PROJECT_CONF_H_ */

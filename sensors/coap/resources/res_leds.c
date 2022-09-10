@@ -30,13 +30,16 @@ static void res_put_handler(coap_message_t *request, coap_message_t *response, u
   if((len = coap_get_post_variable(request, "temp_status", &temp_status))) { //Checks if the put request has the temp_status variable
     if(strncmp(temp_status, "equal_to_conditioner", len) == 0) {
          if (color != 1){
+            leds_off(LEDS_RED);
             leds_on(LEDS_GREEN);
+            
             LOG_INFO("temp_status = equal_to_conditioner ---> Turning on the green led! \n");
             color = 1;
          }
     } 
     else if(strncmp(temp_status, "not_equal_to_conditioner", len) == 0) {
         if (color != 0){
+            leds_off(LEDS_GREEN);
             leds_on(LEDS_RED);
             LOG_INFO("temp_status != equal_to_conditioner ---> Turning on the red led! \n");
             color = 0;

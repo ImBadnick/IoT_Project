@@ -114,6 +114,7 @@ static void pub_handler(const char *topic, uint16_t topic_len, const uint8_t *ch
         // If has been published from the server on the topic the word "low" -> activate the green led
         if(strcmp((const char *)chunk, "low")==0){
             if(color != 1) {
+                leds_off(LEDS_RED);
                 leds_on(LEDS_GREEN);
                 LOG_INFO("Energy consumed is low (<3000kW) --> GREEN LED ACTIVATED \n");
                 color = 1;
@@ -122,6 +123,7 @@ static void pub_handler(const char *topic, uint16_t topic_len, const uint8_t *ch
         // If has been published from the server on the topic the word "high" -> set the led to red 
         else if (strcmp((const char *)chunk, "high")==0){
             if(color != 0) {
+                leds_off(LEDS_GREEN);
                 leds_on(LEDS_RED);
                 LOG_INFO("Energy consumed is high (>=3000kW) --> RED LED ACTIVATED \n");
                 color = 0;
@@ -332,7 +334,10 @@ PROCESS_THREAD(energy_control_process, ev, data)
 
                 // If the button of the sensor has been pressed -> activate/deactivate alarm
                 if(ev == button_hal_press_event){
+                    button_hal_button_t* btn = (button_hal_button_t*)data;
+                    if (btn->unique_id == BOARD_BUTTON_HAL_INDEX_KEY_LEFT) {
                         alarm_handler();
+                    }
                 }
 
                 // Simulates energy values 

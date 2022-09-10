@@ -63,7 +63,7 @@ static void temperature_event_handler(void) {
 static void temperature_get_handler(coap_message_t *request, coap_message_t *response, uint8_t *buffer, uint16_t preferred_size, int32_t *offset){
 
 	//Prepare the msg to send 
-	snprintf((char *)buffer, COAP_MAX_CHUNK_SIZE, "{\"node\": %d, \"temperature\": %d, \"timestamp\": %lu, \"ac_temperature\": %d, \"ac_status\": %d}", node_id, temperature, clock_seconds(), ac_temperature, (int) ac_on);
+	snprintf((char *)buffer, COAP_MAX_CHUNK_SIZE, "{\"node\": %d, \"temp\": %d, \"time\": %lu, \"ac_temp\": %d}", node_id, temperature, clock_seconds(), ac_temperature);
 	
 	//Set the header and the payload of the msg
 	coap_set_header_content_format(response, APPLICATION_JSON);
